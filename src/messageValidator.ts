@@ -40,53 +40,102 @@ export interface MessageOutput {
 
 // const BLOCKED_CONTENT: Array<string> = [`tourhq`, `toursbylocals`, `withlocals`, `facebook`, `twitter`, `instagram`, `gmail`, `email`, `skype`, `cash`, `recruiter`];
 // const WHITELISTED_DOMAINS: Array<string> = [`gowithguide.com`, `travelience.co.jp`, `zoom.us`];
-  
-  
-function parseMessage(message: string, bookingStatus: 'unconfirmed' | 'confirmed', sender: 'customer' | 'supplier'): string {
+
+interface ResultType {
+  parsedMessage: string;
+  blockedContentFound: string[];
+}
+
+function parseMessage(
+  message: string,
+  bookingStatus: 'unconfirmed' | 'confirmed',
+  sender: 'customer' | 'supplier'
+): ResultType {
   let parsedMessage: string = message;
+  const blockedContentFound = new Set<string>();
+  const BLOCKED_KEYWORDS: Array<string> = [
+    'tourhq',
+    'toursbylocals',
+    'withlocals',
+    'facebook',
+    'twitter',
+    'instagram',
+    'gmail',
+    'email',
+    'skype',
+    'cash',
+    'recruiter',
+  ] as const;
+  // Regular Expressions for checking against the given rules
+  const phoneRegex: RegExp = /^\+?[0-9\s.\-()]{7,25}$/;
+  const emailRegex: RegExp = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi;
+  const linkRegex: RegExp =
+    /\b(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{2,256}\.[a-z]{2,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&//=]*)/gi;
+  const keywordRegex: RegExp = new RegExp(`\\b(${BLOCKED_KEYWORDS.join('|')})\\b`, 'gi');
+  // First Pass: Checking for blocked keywords in the message
+  if (bookingStatus === 'unconfirmed') {
+    if (keywordRegex.test(message)) {
+      blockedContentFound.add('keyword');
+    }
+    // Second Pass: Checking emails and links
+    if (sender === 'supplier') {
+      parsedMessage = message.replace(emailRegex, match => {
+        const lowecasedText = match.toLowerCase();
+        if (
+          lowecasedText.endsWith('@gowithguide.com') ||
+          lowecasedText.endsWith('@travelience.co.jp')
+        ) {
+          return match;
+        }
+        blockedContentFound.add('email');
+        return '******';
+      });
 
-  if(bookingStatus==='unconfirmed' && sender==='supplier'){
-    let phoneRegex: RegExp = /^\+?[0-9\s.\-()]{7,25}$/; 
-    let emailRegex: RegExp = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi;;
-    let linkRegex: RegExp = /\b(?:https?:\/\/|www\.)?[\w-]+\.[\w-]{2,}(?:\/[\w\-\.\/]*)*\b/;
-
-    let combinedRegex: RegExp = new RegExp(phoneRegex.source + '|' + emailRegex.source + '|' + linkRegex.source, 'gi');
-
-    // check for whitelisted stuff
-    // Check for the match : phone, email, link
-
-    parsedMessage = message.replace(combinedRegex,(match)=>{
-      const isAllowed = match.includes('zoom.us') ||  match.includes('gowithguide.com') || match.includes('travelience.co.jp');
-      if (isAllowed) {
+      parsedMessage = message.replace(linkRegex, match => {
+        const lowecasedText = match.toLowerCase();
+        if (
+          lowecasedText.includes('gowithguide.com') ||
+          lowecasedText.includes('zoom.us') ||
+          lowecasedText.includes('travelience.co.jp')
+        ) {
+          return match;
+        }
+        blockedContentFound.add('link');
+        return '******';
+      });
+    }
+    // Third Pass: Masking Phone Numbers before booking is confirmed
+    parsedMessage = parsedMessage.replace(phoneRegex, match => {
+      // Hard fail-safe to prevent date formats like YYYY-MM-DD from being masked as a phone number
+      if (/\b\d{4}-\d{2}-\d{2}\b/.test(match)) {
         return match;
-      } else {
-        return '*'.repeat(match.length);
       }
+      blockedContentFound.add('phone');
+      return '******';
     });
 
-  } 
-  return parsedMessage;
+    // Fourth Pass: Checking any other sensitive keywords/content
+    parsedMessage = parsedMessage.replace(linkRegex, () => {
+      blockedContentFound.add('keyword');
+      return '******';
+    });
+  }
+  // Returning the end result
+  return { parsedMessage, blockedContentFound: Array.from(blockedContentFound) };
 }
 
 // ToDo: implement business logic from README.md
 export function validateMessage(input: MessageInput): MessageOutput {
   // let messsage: string = input.message;
-
-  let parsedMessage: string;
-  // let blocked: Array<string> = [];
-
-  if(!input.hasConfirmedBooking){
-    // Block the messages including any contact info
-    
-    parsedMessage = parseMessage(input.message, 'unconfirmed', input.sender);
-  } else {
-    parsedMessage = parseMessage(input.message, 'confirmed', input.sender);
-  }
+  const bookingStatus: 'confirmed' | 'unconfirmed' = input.hasConfirmedBooking
+    ? 'confirmed'
+    : 'unconfirmed';
+  const result: ResultType = parseMessage(input.message, bookingStatus, input.sender);
 
   return {
     sender: input.sender,
-    message: parsedMessage,
+    message: result.parsedMessage,
     hasConfirmedBooking: input.hasConfirmedBooking,
-    blocked: [],
+    blocked: [...result.blockedContentFound],
   };
 }
