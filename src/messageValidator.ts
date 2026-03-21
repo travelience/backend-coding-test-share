@@ -25,9 +25,7 @@ export interface MessageOutput {
   - block all links, always allow links from goWithGuide, zoom (Supplier)
   - Allow all links (Customer)
 
-
-
-
+  - Email/Link- Common Blocking 
   BLOCKING RULES
   - Replace blocked content with `******`
   - Preserve message structure and spacing
@@ -53,6 +51,7 @@ function parseMessage(
 ): ResultType {
   let parsedMessage: string = message;
   const blockedContentFound = new Set<string>();
+
   const BLOCKED_KEYWORDS: Array<string> = [
     'tourhq',
     'toursbylocals',
@@ -66,47 +65,42 @@ function parseMessage(
     'cash',
     'recruiter',
   ] as const;
+
   // Regular Expressions for checking against the given rules
-  const phoneRegex: RegExp = /^\+?[0-9\s.\-()]{7,25}$/;
+  // Phone patterns per README: XXX-XXX-XXXX, XXX XXX XXXX, XXXX-XXXX, XXXX XXXX, +CC XXX-XXX-XXXX
+  const phoneRegexPattern =
+    '(\\b\\d{3}[-\\s]\\d{3}[-\\s]\\d{4}\\b)|(\\b\\d{4}[-\\s]\\d{4}\\b)|(\\+\\d{1,3}[-\\s]?\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{4}\\b)';
+  const phoneRegex: RegExp = new RegExp(phoneRegexPattern, 'gi');
   const emailRegex: RegExp = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi;
   const linkRegex: RegExp =
     /\b(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{2,256}\.[a-z]{2,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&//=]*)/gi;
   const keywordRegex: RegExp = new RegExp(`\\b(${BLOCKED_KEYWORDS.join('|')})\\b`, 'gi');
-  // First Pass: Checking for blocked keywords in the message
-  if (bookingStatus === 'unconfirmed') {
-    if (keywordRegex.test(message)) {
-      blockedContentFound.add('keyword');
-    }
-    // Second Pass: Checking emails and links
-    if (sender === 'supplier') {
-      parsedMessage = message.replace(emailRegex, match => {
-        const lowecasedText = match.toLowerCase();
-        if (
-          lowecasedText.endsWith('@gowithguide.com') ||
-          lowecasedText.endsWith('@travelience.co.jp')
-        ) {
-          return match;
-        }
-        blockedContentFound.add('email');
-        return '******';
-      });
 
-      parsedMessage = message.replace(linkRegex, match => {
-        const lowecasedText = match.toLowerCase();
-        if (
-          lowecasedText.includes('gowithguide.com') ||
-          lowecasedText.includes('zoom.us') ||
-          lowecasedText.includes('travelience.co.jp')
-        ) {
-          return match;
-        }
-        blockedContentFound.add('link');
-        return '******';
-      });
-    }
-    // Third Pass: Masking Phone Numbers before booking is confirmed
+  // CASE: Booking Unconfirmed
+  if (bookingStatus === 'unconfirmed') {
+    // Mask emails (allow only specific whitelisted domains)
+    parsedMessage = parsedMessage.replace(emailRegex, match => {
+      const lowered = match.toLowerCase();
+      if (lowered.endsWith('@gowithguide.com') || lowered.endsWith('@travelience.co.jp')) {
+        return match;
+      }
+      blockedContentFound.add('email');
+      return '******';
+    });
+
+    // Mask links (allow only whitelisted domains)
+    parsedMessage = parsedMessage.replace(linkRegex, match => {
+      const lowered = match.toLowerCase();
+      if (lowered.includes('gowithguide.com') || lowered.includes('zoom.us')) {
+        return match;
+      }
+      blockedContentFound.add('link');
+      return '******';
+    });
+
+    // Mask phone numbers before booking is confirmed
     parsedMessage = parsedMessage.replace(phoneRegex, match => {
-      // Hard fail-safe to prevent date formats like YYYY-MM-DD from being masked as a phone number
+      // Avoid masking date-like strings such as YYYY-MM-DD
       if (/\b\d{4}-\d{2}-\d{2}\b/.test(match)) {
         return match;
       }
@@ -114,11 +108,35 @@ function parseMessage(
       return '******';
     });
 
-    // Fourth Pass: Checking any other sensitive keywords/content
-    parsedMessage = parsedMessage.replace(linkRegex, () => {
+    // Mask blocked keywords (case-insensitive, whole-word)
+    parsedMessage = parsedMessage.replace(keywordRegex, () => {
       blockedContentFound.add('keyword');
       return '******';
     });
+  } else {
+    // CASE: Booking confirmed
+    // Allow phone numbers & mask emails that are not whitelisted
+    parsedMessage = parsedMessage.replace(emailRegex, match => {
+      const lowered = match.toLowerCase();
+      if (lowered.endsWith('@gowithguide.com') || lowered.endsWith('@travelience.co.jp')) {
+        return match;
+      }
+      blockedContentFound.add('email');
+      return '******';
+    });
+
+    // Suppliers: even after booking, only allow whitelisted links
+    if (sender === 'supplier') {
+      parsedMessage = parsedMessage.replace(linkRegex, match => {
+        const lowered = match.toLowerCase();
+        if (lowered.includes('gowithguide.com') || lowered.includes('zoom.us')) {
+          return match;
+        }
+        blockedContentFound.add('link');
+        return '******';
+      });
+    }
+    // Customers with confirmed booking: links, keywords allowed
   }
   // Returning the end result
   return { parsedMessage, blockedContentFound: Array.from(blockedContentFound) };
