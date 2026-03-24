@@ -1,5 +1,7 @@
 # GoWithGuide - Message Validation Coding Test
 
+> **IMPORTANT: Please FORK this repository to complete the coding test. Do NOT create a Pull Request to this repo.** Submit your work by sharing the link to your forked repository.
+
 ## Context
 
 You are an engineering leader, writing code to build a feature that allows all developers to maintain and understand the code for future scalability.
@@ -130,15 +132,18 @@ We encourage and welcome the use of AI code agents (such as Claude, ChatGPT, Git
 
 ## Getting Started
 
-1. Install dependencies: `npm install`
-2. Examine the test data in `src/testData.ts`
-3. Run the test to see what needs to be implemented: `npm test`
-4. Implement your solution in `src/messageValidator.ts`
-5. Run tests until they pass: `npm test`
-6. Ensure linting passes: `npm run lint`
-7. Check types: `npm run type-check`
+1. **Fork this repository** (do NOT clone it directly or create PRs to this repo)
+2. Install dependencies: `npm install`
+3. Examine the test data in `src/testData.ts`
+4. Run the test to see what needs to be implemented: `npm test`
+5. Implement your solution in `src/messageValidator.ts`
+6. Run tests until they pass: `npm test`
+7. Ensure linting passes: `npm run lint`
+8. Check types: `npm run type-check`
 
 ## Submission
+
+> **Reminder: Do NOT open a Pull Request to this repository. Work on your own fork and share the link to your forked repo.**
 
 Your implementation should include:
 - `src/messageValidator.ts` - Main validation logic that passes all tests
